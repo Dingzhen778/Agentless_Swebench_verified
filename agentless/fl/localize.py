@@ -25,7 +25,9 @@ PROJECT_FILE_LOC = os.environ.get("PROJECT_FILE_LOC", None)
 
 def localize(args):
 
-    swe_bench_data = load_dataset("princeton-nlp/SWE-bench_Lite", split="test")
+    # Support custom dataset via command line argument
+    dataset_name = getattr(args, 'dataset', "princeton-nlp/SWE-bench_Lite")
+    swe_bench_data = load_dataset(dataset_name, split="test")
 
     if args.start_file:
         start_file_locs = load_jsonl(args.start_file)
@@ -232,7 +234,8 @@ def merge(args):
 
 def main():
     parser = argparse.ArgumentParser()
-
+    parser.add_argument("--dataset", type=str, default="princeton-nlp/SWE-bench_Lite",
+                        help="Dataset to use (default: SWE-bench_Lite)")
     parser.add_argument("--output_folder", type=str, required=True)
     parser.add_argument("--output_file", type=str, default="loc_outputs.jsonl")
     parser.add_argument(
@@ -264,7 +267,10 @@ def main():
 
     args.output_file = os.path.join(args.output_folder, args.output_file)
 
-    assert not os.path.exists(args.output_file), "Output file already exists"
+    # Allow resume: comment out assertion for parallel mode
+    # assert not os.path.exists(args.output_file), "Output file already exists"
+    if os.path.exists(args.output_file):
+        print(f"Warning: Output file {args.output_file} already exists, will continue from where it left off")
 
     assert not (
         args.file_level and args.start_file

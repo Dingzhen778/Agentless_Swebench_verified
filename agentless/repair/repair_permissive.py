@@ -389,52 +389,13 @@ def repair(args):
 
         file_instruction = repair_relevant_file_instruction
 
-        # Truncate topn_content if it's too long to avoid context length errors
-        MAX_CONTENT_TOKENS = 28000  # Leave room for prompt template and response
-
-        # First try with full content
         message = prompt_template.format(
             repair_relevant_file_instruction=file_instruction,
             problem_statement=problem_statement,
             content=topn_content.rstrip(),  # remove trailing newlines
         ).strip()
 
-        # Check token count and truncate if necessary
-        message_tokens = num_tokens_from_messages(message, args.model)
-        if message_tokens > MAX_CONTENT_TOKENS:
-            logging.warning(f"Message too long ({message_tokens} tokens), truncating content...")
-
-            # Calculate how much to truncate
-            content_lines = topn_content.split('\n')
-            target_lines = int(len(content_lines) * MAX_CONTENT_TOKENS / message_tokens)
-
-            # Try progressively smaller content
-            for truncate_ratio in [0.8, 0.6, 0.4, 0.3, 0.2]:
-                truncated_lines = int(len(content_lines) * truncate_ratio)
-                truncated_content = '\n'.join(content_lines[:truncated_lines]) + '\n... (content truncated due to length)'
-
-                message = prompt_template.format(
-                    repair_relevant_file_instruction=file_instruction,
-                    problem_statement=problem_statement,
-                    content=truncated_content.rstrip(),
-                ).strip()
-
-                message_tokens = num_tokens_from_messages(message, args.model)
-                if message_tokens <= MAX_CONTENT_TOKENS:
-                    logging.info(f"Truncated to {truncate_ratio*100}% ({message_tokens} tokens)")
-                    break
-
-            # If still too long, use minimal content
-            if message_tokens > MAX_CONTENT_TOKENS:
-                minimal_content = '\n'.join(content_lines[:100]) + '\n... (severely truncated)'
-                message = prompt_template.format(
-                    repair_relevant_file_instruction=file_instruction,
-                    problem_statement=problem_statement,
-                    content=minimal_content,
-                ).strip()
-                logging.warning(f"Severely truncated to 100 lines")
-
-        logging.info(f"prompting with message ({message_tokens} tokens):\n{message[:500]}...")
+        logging.info(f"prompting with message:\n{message}")
 
         sample_responses = None
 
@@ -540,12 +501,14 @@ def repair(args):
                 diff_format=args.diff_format,
             )
 
-            # Skip if edited_file is empty or not in file_contents
-            if not edited_file or edited_file not in file_contents:
-                logging.warning(f"Invalid edited_file: '{edited_file}', skipping this sample")
-                continue
-
-            prev_content = file_contents[edited_file]
+            # 宽松策略：允许编辑localization之外的文件，使用空内容作为prev_content
+            if edited_file not in file_contents:
+                logging.warning(f"Model tried to edit file not in localization results: {edited_file}")
+                logging.warning(f"Available files: {list(file_contents.keys())}")
+                logging.warning(f"Using empty prev_content for this file (permissive mode)")
+                prev_content = ""  # 使用空字符串作为prev_content
+            else:
+                prev_content = file_contents[edited_file]
             prev_contents.append(prev_content)
 
             file_names.append(edited_file)

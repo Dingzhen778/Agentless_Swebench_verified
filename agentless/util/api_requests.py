@@ -1,3 +1,4 @@
+import os
 import signal
 import time
 from typing import Dict, Union
@@ -5,7 +6,14 @@ from typing import Dict, Union
 import openai
 import tiktoken
 
-client = openai.OpenAI()
+# Support custom API endpoint via environment variables
+api_key = os.environ.get("OPENAI_API_KEY", "dummy-key")
+base_url = os.environ.get("OPENAI_BASE_URL", None)
+
+if base_url:
+    client = openai.OpenAI(api_key=api_key, base_url=base_url)
+else:
+    client = openai.OpenAI()
 
 
 def num_tokens_from_messages(message, model="gpt-3.5-turbo-0301"):
@@ -59,29 +67,66 @@ def handler(signum, frame):
 
 def request_chatgpt_engine(config):
     ret = None
-    while ret is None:
+    max_retries = 3
+    retry_count = 0
+
+    while ret is None and retry_count < max_retries:
         try:
             signal.signal(signal.SIGALRM, handler)
             signal.alarm(100)
             ret = client.chat.completions.create(**config)
             signal.alarm(0)
         except openai._exceptions.BadRequestError as e:
-            print(e)
+            print(f"BadRequestError: {e}")
             signal.alarm(0)
+            # Don't retry on BadRequest (usually means context too long or invalid request)
+            # Return a dummy response with empty content
+            class DummyChoice:
+                def __init__(self):
+                    self.message = type('obj', (object,), {'content': ''})()
+            class DummyUsage:
+                def __init__(self):
+                    self.completion_tokens = 0
+                    self.prompt_tokens = 0
+            class DummyResponse:
+                def __init__(self):
+                    self.choices = [DummyChoice()]
+                    self.usage = DummyUsage()
+            return DummyResponse()
         except openai._exceptions.RateLimitError as e:
             print("Rate limit exceeded. Waiting...")
             print(e)
             signal.alarm(0)
             time.sleep(5)
+            retry_count += 1
         except openai._exceptions.APIConnectionError as e:
             print("API connection error. Waiting...")
             signal.alarm(0)
             time.sleep(5)
+            retry_count += 1
         except Exception as e:
             print("Unknown error. Waiting...")
             print(e)
             signal.alarm(0)
             time.sleep(1)
+            retry_count += 1
+
+    # If we exhausted all retries, return dummy response
+    if ret is None:
+        print("Max retries exceeded, returning empty response")
+        class DummyChoice:
+            def __init__(self):
+                self.message = type('obj', (object,), {'content': ''})()
+        class DummyUsage:
+            def __init__(self):
+                self.completion_tokens = 0
+                self.prompt_tokens = 0
+        class DummyResponse:
+            def __init__(self):
+                self.choices = [DummyChoice()]
+                self.usage = DummyUsage()
+        return DummyResponse()
+
     return ret
 
 

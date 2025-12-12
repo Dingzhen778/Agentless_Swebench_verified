@@ -1,4 +1,5 @@
 import logging
+import os
 from abc import ABC, abstractmethod
 
 from agentless.repair.repair import construct_topn_file_context
@@ -10,6 +11,9 @@ from agentless.util.preprocess_data import (
     line_wrap_content,
     show_project_structure,
 )
+
+# Support custom model via environment variable
+MODEL_NAME = os.environ.get("AGENTLESS_MODEL", "gpt-4o-2024-05-13")
 
 
 class FL(ABC):
@@ -240,7 +244,7 @@ Return just the locations.
                 "prompt": message,
                 "usage": {
                     "prompt_tokens": num_tokens_from_messages(
-                        message, "gpt-4o-2024-05-13"
+                        message, MODEL_NAME
                     ),
                 },
             }
@@ -251,7 +255,7 @@ Return just the locations.
             max_tokens=self.max_tokens,
             temperature=0,
             batch_size=1,
-            model="gpt-4o-2024-05-13",  # use gpt-4o for now.
+            model=MODEL_NAME,  # use gpt-4o for now.
         )
         ret = request_chatgpt_engine(config)
         raw_output = ret.choices[0].message.content
@@ -317,7 +321,7 @@ Return just the locations.
                     raise ValueError(f"File {file_name} does not exist.")
 
             file_contents = "".join(contents)
-            if num_tokens_from_messages(file_contents, "gpt-4o-2024-05-13") < 128000:
+            if num_tokens_from_messages(file_contents, MODEL_NAME) < 128000:
                 break
             else:
                 max_num_files -= 1
@@ -333,7 +337,7 @@ Return just the locations.
                 "prompt": message,
                 "usage": {
                     "prompt_tokens": num_tokens_from_messages(
-                        message, "gpt-4o-2024-05-13"
+                        message, MODEL_NAME
                     ),
                 },
             }
@@ -344,7 +348,7 @@ Return just the locations.
             max_tokens=self.max_tokens,
             temperature=0,
             batch_size=1,
-            model="gpt-4o-2024-05-13",  # use gpt-4o for now.
+            model=MODEL_NAME,  # use gpt-4o for now.
         )
         ret = request_chatgpt_engine(config)
         raw_output = ret.choices[0].message.content
@@ -388,7 +392,7 @@ Return just the locations.
         message = template.format(
             problem_statement=self.problem_statement, file_contents=file_contents
         )
-        assert num_tokens_from_messages(message, "gpt-4o-2024-05-13") < 128000
+        assert num_tokens_from_messages(message, MODEL_NAME) < 128000
         logging.info(f"prompting with message:\n{message}")
         logging.info("=" * 80)
 
@@ -397,7 +401,7 @@ Return just the locations.
                 "prompt": message,
                 "usage": {
                     "prompt_tokens": num_tokens_from_messages(
-                        message, "gpt-4o-2024-05-13"
+                        message, MODEL_NAME
                     ),
                 },
             }
@@ -408,7 +412,7 @@ Return just the locations.
             max_tokens=self.max_tokens,
             temperature=0,
             batch_size=1,
-            model="gpt-4o-2024-05-13",  # use gpt-4o for now.
+            model=MODEL_NAME,  # use gpt-4o for now.
         )
         ret = request_chatgpt_engine(config)
         raw_output = ret.choices[0].message.content
@@ -477,13 +481,13 @@ Return just the locations.
         )
         logging.info(f"prompting with message:\n{message}")
         logging.info("=" * 80)
-        assert num_tokens_from_messages(message, "gpt-4o-2024-05-13") < 128000
+        assert num_tokens_from_messages(message, MODEL_NAME) < 128000
         if mock:
             traj = {
                 "prompt": message,
                 "usage": {
                     "prompt_tokens": num_tokens_from_messages(
-                        message, "gpt-4o-2024-05-13"
+                        message, MODEL_NAME
                     ),
                 },
             }
@@ -493,7 +497,7 @@ Return just the locations.
             max_tokens=self.max_tokens,
             temperature=temperature,
             batch_size=num_samples,
-            model="gpt-4o-2024-05-13",  # use gpt-4o for now.
+            model=MODEL_NAME,  # use gpt-4o for now.
         )
         ret = request_chatgpt_engine(config)
         raw_outputs = [choice.message.content for choice in ret.choices]

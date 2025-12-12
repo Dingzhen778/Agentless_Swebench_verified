@@ -3,6 +3,7 @@ import ast
 import json
 import os
 import subprocess
+import time
 import uuid
 
 import pandas as pd
@@ -25,42 +26,114 @@ repo_to_top_folder = {
 
 
 def checkout_commit(repo_path, commit_id):
-    """Checkout the specified commit in the given local git repository.
+    """Checkout the specified commit in the given local git repository with retry.
     :param repo_path: Path to the local git repository
     :param commit_id: Commit ID to checkout
     :return: None
     """
-    try:
-        # Change directory to the provided repository path and checkout the specified commit
-        print(f"Checking out commit {commit_id} in repository at {repo_path}...")
-        subprocess.run(["git", "-C", repo_path, "checkout", commit_id], check=True)
-        print("Commit checked out successfully.")
-    except subprocess.CalledProcessError as e:
-        print(f"An error occurred while running git command: {e}")
-    except Exception as e:
-        print(f"An unexpected error occurred: {e}")
+    max_retries = 3
+    retry_delay = 3  # seconds
+
+    for attempt in range(max_retries):
+        try:
+            print(f"Checking out commit {commit_id} in repository at {repo_path}...")
+            subprocess.run(
+                ["git", "-C", repo_path, "checkout", commit_id],
+                check=True,
+                timeout=60,
+                capture_output=True
+            )
+            print("Commit checked out successfully.")
+            return  # Success
+
+        except subprocess.CalledProcessError as e:
+            print(f"An error occurred while running git command: {e}")
+            if attempt < max_retries - 1:
+                print(f"  Retrying in {retry_delay} seconds... (Attempt {attempt + 2}/{max_retries})")
+                time.sleep(retry_delay)
+            else:
+                raise RuntimeError(f"Failed to checkout {commit_id} after {max_retries} attempts: {e}")
+
+        except Exception as e:
+            print(f"An unexpected error occurred: {e}")
+            if attempt < max_retries - 1:
+                print(f"  Retrying in {retry_delay} seconds...")
+                time.sleep(retry_delay)
+            else:
+                raise
 
 
 def clone_repo(repo_name, repo_playground):
-    try:
+    """Clone repository with retry mechanism for network errors"""
+    max_retries = 3
+    retry_delay = 5  # seconds
 
-        print(
-            f"Cloning repository from https://github.com/{repo_name}.git to {repo_playground}/{repo_to_top_folder[repo_name]}..."
-        )
-        subprocess.run(
-            [
-                "git",
-                "clone",
-                f"https://github.com/{repo_name}.git",
-                f"{repo_playground}/{repo_to_top_folder[repo_name]}",
-            ],
-            check=True,
-        )
-        print("Repository cloned successfully.")
-    except subprocess.CalledProcessError as e:
-        print(f"An error occurred while running git command: {e}")
-    except Exception as e:
-        print(f"An unexpected error occurred: {e}")
+    for attempt in range(max_retries):
+        try:
+            print(
+                f"Cloning repository from https://github.com/{repo_name}.git to {repo_playground}/{repo_to_top_folder[repo_name]}..."
+            )
+            if attempt > 0:
+                print(f"  (Attempt {attempt + 1}/{max_retries})")
+
+            # Add timeout and better error handling
+            # Note: Not using --depth=1 because we need to checkout specific commits
+            result = subprocess.run(
+                [
+                    "git",
+                    "clone",
+                    f"https://github.com/{repo_name}.git",
+                    f"{repo_playground}/{repo_to_top_folder[repo_name]}",
+                ],
+                check=True,
+                timeout=600,  # 10 minute timeout for full clone
+                capture_output=True,
+                text=True
+            )
+            print("Repository cloned successfully.")
+            return  # Success, exit function
+
+        except subprocess.TimeoutExpired:
+            print(f"Clone timeout on attempt {attempt + 1}/{max_retries}")
+            if attempt < max_retries - 1:
+                print(f"  Retrying in {retry_delay} seconds...")
+                time.sleep(retry_delay)
+                # Clean up partial clone
+                subprocess.run(
+                    ["rm", "-rf", f"{repo_playground}/{repo_to_top_folder[repo_name]}"],
+                    check=False
+                )
+            else:
+                raise RuntimeError(f"Failed to clone {repo_name} after {max_retries} attempts (timeout)")
+
+        except subprocess.CalledProcessError as e:
+            print(f"An error occurred while running git command: {e}")
+            print(f"  stdout: {e.stdout}")
+            print(f"  stderr: {e.stderr}")
+
+            if attempt < max_retries - 1:
+                print(f"  Retrying in {retry_delay} seconds...")
+                time.sleep(retry_delay)
+                # Clean up partial clone
+                subprocess.run(
+                    ["rm", "-rf", f"{repo_playground}/{repo_to_top_folder[repo_name]}"],
+                    check=False
+                )
+            else:
+                raise RuntimeError(f"Failed to clone {repo_name} after {max_retries} attempts: {e}")
+
+        except Exception as e:
+            print(f"An unexpected error occurred: {e}")
+            if attempt < max_retries - 1:
+                print(f"  Retrying in {retry_delay} seconds...")
+                time.sleep(retry_delay)
+                # Clean up partial clone
+                subprocess.run(
+                    ["rm", "-rf", f"{repo_playground}/{repo_to_top_folder[repo_name]}"],
+                    check=False
+                )
+            else:
+                raise
 
 
 def get_project_structure_from_scratch(
